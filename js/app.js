@@ -160,10 +160,23 @@
   }
 
   function showApp(loggedIn) {
-    document.getElementById("boot").hidden = true;
+    const boot = document.getElementById("boot");
+    boot.hidden = true;
+    boot.style.display = "none";
     document.getElementById("login-screen").hidden = loggedIn;
     document.getElementById("app").hidden = !loggedIn;
     document.getElementById("btn-add").hidden = !loggedIn;
+  }
+
+  function showBoot(on) {
+    const boot = document.getElementById("boot");
+    if (on) {
+      boot.hidden = false;
+      boot.style.display = "grid";
+    } else {
+      boot.hidden = true;
+      boot.style.display = "none";
+    }
   }
 
   /* ========== Auth ========== */
@@ -227,12 +240,12 @@
   }
 
   async function boot() {
-    // Mostrar login ya; si hay sesión válida, enterApp lo reemplaza
+    // Login ya está visible en el HTML
     showApp(false);
+    paintLoginWho();
 
     try {
-      paintLoginWho();
-
+      showBoot(true);
       const sessionResult = await Promise.race([
         sb.auth.getSession(),
         new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 6000)),
@@ -256,6 +269,8 @@
               : "Falta el perfil en Supabase (seed-profiles.sql) o hubo un error de red."
           );
         }
+      } else {
+        showBoot(false);
       }
     } catch (err) {
       console.error("boot", err);
@@ -263,6 +278,8 @@
       if (err.message === "timeout") {
         showLoginError("Auth de Supabase no respondió a tiempo. Igual podés intentar entrar.");
       }
+    } finally {
+      showBoot(false);
     }
 
     sb.auth.onAuthStateChange(async (event, session) => {
@@ -273,14 +290,16 @@
         if (state.channel) sb.removeChannel(state.channel);
         showApp(false);
       }
-      // Evitar doble enter en INITIAL_SESSION si ya bootstrapeamos
       if (event === "SIGNED_IN" && session && !state.profile) {
         try {
+          showBoot(true);
           await enterApp(session);
         } catch (err) {
           console.error(err);
           showApp(false);
           showLoginError("Falta el perfil en la tabla profiles.");
+        } finally {
+          showBoot(false);
         }
       }
     });
@@ -293,7 +312,8 @@
       const b = document.createElement("button");
       b.type = "button";
       b.className = `pill ${p.id}${state.loginWho === p.id ? " active" : ""}`;
-      b.textContent = p.short; // Guada / Ema
+      b.textContent = p.short;
+      b.dataset.loginWho = p.id;
       b.addEventListener("click", () => {
         state.loginWho = p.id;
         paintLoginWho();
@@ -301,6 +321,14 @@
       wrap.appendChild(b);
     });
   }
+
+  // Por si el usuario toca Guada/Ema antes de que corra boot
+  document.getElementById("login-who")?.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-login-who]");
+    if (!btn) return;
+    state.loginWho = btn.dataset.loginWho;
+    paintLoginWho();
+  });
 
   function showLoginError(msg) {
     const el = document.getElementById("login-error");

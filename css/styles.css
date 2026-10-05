@@ -1159,6 +1159,10 @@ button {
 }
 
 /* —— Login / boot —— */
+[hidden] {
+  display: none !important;
+}
+
 .boot {
   position: fixed;
   inset: 0;
@@ -1168,6 +1172,10 @@ button {
   font-weight: 700;
   color: var(--muted);
   z-index: 50;
+}
+
+.boot[hidden] {
+  display: none !important;
 }
 
 .login-screen {
