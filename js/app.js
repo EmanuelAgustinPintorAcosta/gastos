@@ -249,7 +249,7 @@
       const b = document.createElement("button");
       b.type = "button";
       b.className = `pill ${p.id}${state.loginWho === p.id ? " active" : ""}`;
-      b.textContent = p.name;
+      b.textContent = p.short; // Guada / Ema
       b.addEventListener("click", () => {
         state.loginWho = p.id;
         paintLoginWho();

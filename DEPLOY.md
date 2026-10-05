@@ -10,7 +10,7 @@ La app ya tiene login (Guada / Ema), sync en la nube y privacidad de gastos pers
 | Gastos de casa | Los dos | Cualquiera (indica quién pagó) |
 | Gastos personales | Solo el dueño | Solo a tu nombre |
 
-Contraseña inicial: `1234` (después se cambia desde el ícono de cuenta).
+Contraseña inicial: `123456` (después se cambia desde el ícono de cuenta).
 
 ---
 
@@ -27,11 +27,11 @@ Contraseña inicial: `1234` (después se cambia desde el ícono de cuenta).
 1. Ir a **Authentication → Users → Add user → Create new user**
 2. Crear **Guada**
    - Email: `guada@hogar.app` (o el que pongas en `js/config.js`)
-   - Password: `1234`
+   - Password: `123456`
    - Marcar **Auto Confirm User**
 3. Crear **Ema**
    - Email: `ema@hogar.app`
-   - Password: `1234`
+   - Password: `123456`
    - Auto Confirm User
 4. En cada usuario, copiá el **User UID** (UUID).
 
@@ -74,7 +74,7 @@ Los emails de `config.js` tienen que ser **exactamente** los mismos que creaste 
 ## 6. Probar en local
 
 1. Abrí `index.html` con un server local (Live Server / `npx serve`).
-2. Entrá como Guada con `1234`.
+2. Entrá como Guada con `123456`.
 3. Cargá un gasto personal → en otra ventana / celular entrá como Ema: **no** debería ver ese personal.
 4. Cargá un gasto de casa → Ema sí lo ve.
 
@@ -96,7 +96,7 @@ Si preferís no subir la key al repo:
 ## 8. Después del deploy
 
 1. Abrí la URL de Vercel en los dos celulares.
-2. Entrar cada uno con su usuario y `1234`.
+2. Entrar cada uno con su usuario y `123456`.
 3. Cambiar la contraseña: ícono de persona → **Cambiar contraseña**.
 4. Listo: lo que carguen de casa/ingresos aparece en los dos; lo personal no.
 
