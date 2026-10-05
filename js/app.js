@@ -352,7 +352,17 @@
     btn.disabled = false;
     btn.textContent = "Entrar";
     if (error) {
-      showLoginError("Contraseña incorrecta o usuario no creado en Supabase.");
+      console.error("login", error);
+      const detail = error.message || "";
+      if (/disabled|email_provider/i.test(detail) || error.code === "email_provider_disabled") {
+        showLoginError("En Supabase: Authentication → Providers → Email → Enable Sign in. Guardá y reintentá.");
+      } else if (/confirm|not confirmed/i.test(detail)) {
+        showLoginError("Email no confirmado. En Users tocá Confirm, o desactivá Confirm email en Providers.");
+      } else if (/invalid/i.test(detail)) {
+        showLoginError(`Credenciales inválidas para ${email}. El email debe coincidir exactamente con Authentication → Users.`);
+      } else {
+        showLoginError(`${detail || "No se pudo entrar"} (${email})`);
+      }
       return;
     }
     try {
