@@ -9,8 +9,13 @@
 
   const lib = window.supabase;
   if (!lib || typeof lib.createClient !== "function") {
-    bootEl.innerHTML =
-      "No se pudo cargar la librería de Supabase.<br><small>Probá recargar o desactivar bloqueadores.</small>";
+    bootEl.hidden = true;
+    document.getElementById("login-screen").hidden = false;
+    const err = document.getElementById("login-error");
+    if (err) {
+      err.hidden = false;
+      err.textContent = "No se pudo cargar Supabase (js/vendor). Redeployá el proyecto.";
+    }
     return;
   }
 
@@ -222,40 +227,42 @@
   }
 
   async function boot() {
+    // Mostrar login ya; si hay sesión válida, enterApp lo reemplaza
+    showApp(false);
+
     try {
       paintLoginWho();
 
       const sessionResult = await Promise.race([
         sb.auth.getSession(),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("timeout")), 10000)
-        ),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 6000)),
       ]);
 
       const session = sessionResult?.data?.session || null;
 
       if (session) {
         try {
-          await enterApp(session);
+          await Promise.race([
+            enterApp(session),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("profile-timeout")), 8000)),
+          ]);
         } catch (err) {
           console.error(err);
-          await sb.auth.signOut();
+          await sb.auth.signOut().catch(() => {});
           showApp(false);
           showLoginError(
-            "Entraste, pero falta el perfil en Supabase (seed-profiles.sql) o las tablas."
+            err.message === "profile-timeout"
+              ? "Supabase no respondió al cargar el perfil. Revisá tablas/RLS."
+              : "Falta el perfil en Supabase (seed-profiles.sql) o hubo un error de red."
           );
         }
-      } else {
-        showApp(false);
       }
     } catch (err) {
       console.error("boot", err);
       showApp(false);
-      showLoginError(
-        err.message === "timeout"
-          ? "Supabase no respondió. Revisá URL/key y tu conexión."
-          : "No se pudo iniciar. Revisá la consola o recargá."
-      );
+      if (err.message === "timeout") {
+        showLoginError("Auth de Supabase no respondió a tiempo. Igual podés intentar entrar.");
+      }
     }
 
     sb.auth.onAuthStateChange(async (event, session) => {
@@ -266,7 +273,8 @@
         if (state.channel) sb.removeChannel(state.channel);
         showApp(false);
       }
-      if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session && !state.profile) {
+      // Evitar doble enter en INITIAL_SESSION si ya bootstrapeamos
+      if (event === "SIGNED_IN" && session && !state.profile) {
         try {
           await enterApp(session);
         } catch (err) {
