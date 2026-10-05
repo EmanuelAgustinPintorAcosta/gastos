@@ -1,13 +1,26 @@
 (() => {
   const CFG = window.HOGAR_CONFIG;
+  const bootEl = document.getElementById("boot");
+
   if (!CFG?.supabaseUrl || CFG.supabaseUrl.startsWith("PEGAR_")) {
-    document.getElementById("boot").textContent =
-      "Falta configurar js/config.js con tu URL y anon key de Supabase.";
+    bootEl.textContent = "Falta configurar js/config.js con tu URL y anon key de Supabase.";
     return;
   }
 
-  const { createClient } = supabase;
-  const sb = createClient(CFG.supabaseUrl, CFG.supabaseAnonKey);
+  const lib = window.supabase;
+  if (!lib || typeof lib.createClient !== "function") {
+    bootEl.innerHTML =
+      "No se pudo cargar la librería de Supabase.<br><small>Probá recargar o desactivar bloqueadores.</small>";
+    return;
+  }
+
+  const sb = lib.createClient(CFG.supabaseUrl, CFG.supabaseAnonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+  });
 
   const PEOPLE = [
     { id: "guadalupe", name: "Guadalupe", short: "Guada", initial: "G" },
@@ -209,19 +222,40 @@
   }
 
   async function boot() {
-    paintLoginWho();
-    const { data } = await sb.auth.getSession();
-    if (data.session) {
-      try {
-        await enterApp(data.session);
-      } catch (err) {
-        console.error(err);
-        document.getElementById("boot").hidden = true;
-        document.getElementById("login-screen").hidden = false;
-        showLoginError("Tu usuario no tiene perfil. Revisá seed-profiles.sql.");
+    try {
+      paintLoginWho();
+
+      const sessionResult = await Promise.race([
+        sb.auth.getSession(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("timeout")), 10000)
+        ),
+      ]);
+
+      const session = sessionResult?.data?.session || null;
+
+      if (session) {
+        try {
+          await enterApp(session);
+        } catch (err) {
+          console.error(err);
+          await sb.auth.signOut();
+          showApp(false);
+          showLoginError(
+            "Entraste, pero falta el perfil en Supabase (seed-profiles.sql) o las tablas."
+          );
+        }
+      } else {
+        showApp(false);
       }
-    } else {
+    } catch (err) {
+      console.error("boot", err);
       showApp(false);
+      showLoginError(
+        err.message === "timeout"
+          ? "Supabase no respondió. Revisá URL/key y tu conexión."
+          : "No se pudo iniciar. Revisá la consola o recargá."
+      );
     }
 
     sb.auth.onAuthStateChange(async (event, session) => {
@@ -232,11 +266,13 @@
         if (state.channel) sb.removeChannel(state.channel);
         showApp(false);
       }
-      if (event === "SIGNED_IN" && session && !state.profile) {
+      if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session && !state.profile) {
         try {
           await enterApp(session);
         } catch (err) {
           console.error(err);
+          showApp(false);
+          showLoginError("Falta el perfil en la tabla profiles.");
         }
       }
     });
@@ -909,5 +945,8 @@
     showApp(false);
   });
 
-  boot();
+  boot().catch((err) => {
+    console.error(err);
+    showApp(false);
+  });
 })();

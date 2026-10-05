@@ -198,5 +198,16 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.8/dist/umd/supabase.min.js"></script>
     <script src="js/config.js"></script>
     <script src="js/app.js"></script>
+    <script>
+      // Si a los 12s sigue el boot, mostramos login igual
+      setTimeout(function () {
+        var boot = document.getElementById("boot");
+        var login = document.getElementById("login-screen");
+        if (boot && !boot.hidden && login && login.hidden) {
+          boot.hidden = true;
+          login.hidden = false;
+        }
+      }, 12000);
+    </script>
   </body>
 </html>

@@ -87,11 +87,13 @@ Los emails de `config.js` tienen que ser **exactamente** los mismos que creaste 
 5. Build command: vacío. Output: vacío (o `.`).
 6. Deploy.
 
-No hace falta variables de entorno si ya pegaste URL y key en `js/config.js`.
+## Variables de entorno en Vercel
 
-Si preferís no subir la key al repo:
-- Dejá placeholders en `config.js` y usá un script de build, o
-- Aceptá que la **anon key** es pública por diseño (la seguridad real está en las RLS de Supabase). Está bien que viaje al navegador.
+**No hacen falta.** La URL y la anon key van en `js/config.js` (ya desplegado).
+La seguridad real está en las políticas RLS de Supabase, no en esconder la anon key.
+
+Si la web se queda en “Cargando Hogar…”, redeployá después de un fix de arranque y forzá recarga (Ctrl+F5).
+
 
 ## 8. Después del deploy
 
