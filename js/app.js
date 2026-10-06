@@ -24,8 +24,16 @@
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
+      storage: window.localStorage,
+      storageKey: "hogar-auth-v1",
     },
   });
+
+  const WHO_KEY = "hogar-last-who";
+  const savedWho = localStorage.getItem(WHO_KEY);
+  if (savedWho === "guadalupe" || savedWho === "emanuel") {
+    // applied below once state exists
+  }
 
   const PEOPLE = [
     { id: "guadalupe", name: "Guadalupe", short: "Guada", initial: "G" },
@@ -102,12 +110,18 @@
     txs: [],
     view: "resumen",
     month: toMonth(new Date()),
-    loginWho: "guadalupe",
+    loginWho: savedWho === "emanuel" || savedWho === "guadalupe" ? savedWho : "guadalupe",
     editingId: null,
     form: { type: "shared", person: "guadalupe", category: "Supermercado" },
     loading: false,
     channel: null,
+    deferredInstall: null,
   };
+
+  function rememberWho(id) {
+    state.loginWho = id;
+    localStorage.setItem(WHO_KEY, id);
+  }
 
   function toMonth(d) {
     const x = d instanceof Date ? d : new Date(d + "T12:00:00");
@@ -230,18 +244,17 @@
   async function enterApp(session) {
     state.session = session;
     state.profile = await loadProfile(session.user.id);
+    rememberWho(state.profile.slug);
     await fetchTxs();
     subscribeRealtime();
     document.getElementById("session-kicker").textContent = `Sesión de ${person(state.profile.slug).short}`;
     document.getElementById("settings-user").textContent =
-      `Estás como ${person(state.profile.slug).name}. Casa e ingresos se sincronizan. Lo personal es privado.`;
+      `Estás como ${person(state.profile.slug).name}. La sesión queda guardada en este dispositivo hasta que cierres sesión. Casa e ingresos se sincronizan; lo personal es privado.`;
     showApp(true);
     render();
   }
 
   async function boot() {
-    // Login ya está visible en el HTML
-    showApp(false);
     paintLoginWho();
 
     try {
@@ -261,22 +274,28 @@
           ]);
         } catch (err) {
           console.error(err);
-          await sb.auth.signOut().catch(() => {});
+          // No borramos la sesión por un timeout de red: el usuario reintenta
+          const isMissingProfile =
+            /PGRST116|0 rows|profile/i.test(String(err.message || err)) &&
+            err.message !== "profile-timeout";
+          if (isMissingProfile) {
+            await sb.auth.signOut().catch(() => {});
+          }
           showApp(false);
           showLoginError(
             err.message === "profile-timeout"
-              ? "Supabase no respondió al cargar el perfil. Revisá tablas/RLS."
+              ? "Hubo un problema de red al restaurar la sesión. Tocá Entrar de nuevo."
               : "Falta el perfil en Supabase (seed-profiles.sql) o hubo un error de red."
           );
         }
       } else {
-        showBoot(false);
+        showApp(false);
       }
     } catch (err) {
       console.error("boot", err);
       showApp(false);
       if (err.message === "timeout") {
-        showLoginError("Auth de Supabase no respondió a tiempo. Igual podés intentar entrar.");
+        showLoginError("No se pudo verificar la sesión guardada. Probá Entrar.");
       }
     } finally {
       showBoot(false);
@@ -302,7 +321,42 @@
           showBoot(false);
         }
       }
+      if (event === "TOKEN_REFRESHED" && session) {
+        state.session = session;
+      }
     });
+
+    setupInstallPrompt();
+  }
+
+  function setupInstallPrompt() {
+    const hint = document.getElementById("install-hint");
+    window.addEventListener("beforeinstallprompt", (e) => {
+      e.preventDefault();
+      state.deferredInstall = e;
+      if (hint) {
+        hint.hidden = false;
+        hint.innerHTML =
+          '<button type="button" class="link-install" id="btn-install-pwa">Instalar Hogar en el teléfono</button>';
+        document.getElementById("btn-install-pwa")?.addEventListener("click", async () => {
+          if (!state.deferredInstall) return;
+          state.deferredInstall.prompt();
+          await state.deferredInstall.userChoice;
+          state.deferredInstall = null;
+          hint.hidden = true;
+        });
+      }
+    });
+
+    // iOS no dispara beforeinstallprompt
+    const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const isStandalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      window.navigator.standalone === true;
+    if (isIos && !isStandalone && hint) {
+      hint.hidden = false;
+      hint.textContent = "En iPhone: Compartir → Agregar a pantalla de inicio";
+    }
   }
 
   function paintLoginWho() {
@@ -315,7 +369,7 @@
       b.textContent = p.short;
       b.dataset.loginWho = p.id;
       b.addEventListener("click", () => {
-        state.loginWho = p.id;
+        rememberWho(p.id);
         paintLoginWho();
       });
       wrap.appendChild(b);
@@ -327,6 +381,7 @@
     const btn = e.target.closest("[data-login-who]");
     if (!btn) return;
     state.loginWho = btn.dataset.loginWho;
+    rememberWho(state.loginWho);
     paintLoginWho();
   });
 
@@ -368,6 +423,7 @@
     try {
       await enterApp(data.session);
       document.getElementById("login-password").value = "";
+      toast("Sesión guardada en este dispositivo");
     } catch (err) {
       console.error(err);
       showLoginError("Entraste, pero falta el perfil en la tabla profiles.");

@@ -1236,6 +1236,16 @@ button {
   color: var(--muted);
 }
 
+.link-install {
+  color: var(--ema);
+  font-weight: 800;
+  text-decoration: underline;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  font: inherit;
+}
+
 .login-card .field input[type="password"] {
   width: 100%;
   border: 1px solid var(--line);

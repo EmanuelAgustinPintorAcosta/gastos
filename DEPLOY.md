@@ -10,7 +10,7 @@ La app ya tiene login (Guada / Ema), sync en la nube y privacidad de gastos pers
 | Gastos de casa | Los dos | Cualquiera (indica quién pagó) |
 | Gastos personales | Solo el dueño | Solo a tu nombre |
 
-Contraseña inicial: `123456` (después se cambia desde el ícono de cuenta).
+Contraseña inicial sugerida al crear usuarios: `123456` (después se cambia desde la app). La sesión queda guardada en el dispositivo.
 
 ---
 
