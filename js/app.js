@@ -779,6 +779,156 @@
     `;
   }
 
+  function monthBoundsLabel() {
+    const [y, m] = state.month.split("-").map(Number);
+    const start = new Date(y, m - 1, 1);
+    const end = new Date(y, m, 0);
+    const fmt = new Intl.DateTimeFormat("es-AR", { day: "numeric", month: "short" });
+    return `${fmt.format(start)} → ${fmt.format(end)} ${y}`;
+  }
+
+  function pctOfIncome(amount, income) {
+    if (!income || income <= 0) return "—";
+    return pct(amount / income);
+  }
+
+  function buildCategoryTotals(list, type, personId) {
+    const map = {};
+    for (const t of list) {
+      if (t.type !== type || t.person !== personId) continue;
+      map[t.category] = (map[t.category] || 0) + t.amount;
+    }
+    return Object.entries(map).sort((a, b) => b[1] - a[1]);
+  }
+
+  function renderReportRows(entries, income, fillClass) {
+    if (!entries.length) {
+      return `<p class="report-empty">Sin movimientos en este bloque para el mes.</p>`;
+    }
+    const max = Math.max(...entries.map(([, a]) => a), 1);
+    return `<div class="report-list">${entries
+      .map(([name, amt]) => {
+        const ofIncome = pctOfIncome(amt, income);
+        const bar = Math.max(4, (amt / max) * 100);
+        return `
+          <div class="report-row">
+            <div class="report-row-top">
+              <span>${name}</span>
+              <b>${money.format(amt)}</b>
+            </div>
+            <div class="report-track"><div class="report-fill ${fillClass}" style="width:${bar}%"></div></div>
+            <div class="report-row-meta">
+              <span>Del sueldo</span>
+              <strong>${ofIncome}</strong>
+            </div>
+          </div>`;
+      })
+      .join("")}</div>`;
+  }
+
+  function viewInformes(c) {
+    const me = mySlug();
+    const mePerson = person(me);
+    const list = monthTxs();
+    const myIncome = c.by[me].income;
+    const personalCats = buildCategoryTotals(list, "personal", me);
+    const sharedPaidCats = buildCategoryTotals(list, "shared", me);
+    const personalTotal = c.by[me].personal;
+    const sharedPaid = c.by[me].sharedPaid;
+    const shouldCasa = c.should[me];
+    const outflow = personalTotal + sharedPaid;
+    const leftover = c.leftover[me];
+    const range = monthBoundsLabel();
+
+    // Totales para el resumen de contraste
+    const summaryRows = [
+      ["Tu ingreso", myIncome, "total"],
+      ["Gastaste (personal + casa que pagaste)", outflow, "total"],
+      ["Solo personal", personalTotal, "personal"],
+      ["Casa que pagaste vos", sharedPaid, "shared"],
+      ["Tu parte justa de casa", shouldCasa, "shared"],
+    ];
+
+    return `
+      <div class="callout personal">
+        Informe <strong>solo tuyo</strong> (${mePerson.short}). Contrasta tu sueldo del mes con lo que salió de tu bolsillo, del día 1 al último del mes.
+      </div>
+
+      <section class="card hero ${myIncome > 0 ? "ok" : "empty"}">
+        <p class="kicker">Informe personal · ${mePerson.short}</p>
+        <h2>${myIncome ? money.format(myIncome) : "Sin sueldo cargado"}</h2>
+        <p class="lead">
+          ${
+            myIncome
+              ? `En ${range} usaste ${money.format(outflow)} (${pctOfIncome(outflow, myIncome)} del sueldo). Te queda ${money.format(leftover)} (${pctOfIncome(Math.max(leftover, 0), myIncome)}).`
+              : `Período ${range}. Cargá tu ingreso en Ingresos para ver los %.`
+          }
+        </p>
+        <p class="report-range">${range}</p>
+        <div class="stat-row">
+          <div class="stat"><span>Del sueldo gastado</span><strong>${pctOfIncome(outflow, myIncome)}</strong></div>
+          <div class="stat"><span>Personal</span><strong>${pctOfIncome(personalTotal, myIncome)}</strong></div>
+          <div class="stat"><span>Casa pagada</span><strong>${pctOfIncome(sharedPaid, myIncome)}</strong></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <div>
+            <h3>Contraste del mes</h3>
+            <p>Cuánto representa cada bloque sobre tu sueldo</p>
+          </div>
+        </div>
+        <div class="report-list">
+          ${summaryRows
+            .map(([label, amt, fill]) => {
+              return `
+              <div class="report-row">
+                <div class="report-row-top"><span>${label}</span><b>${money.format(amt)}</b></div>
+                <div class="report-track"><div class="report-fill ${fill}" style="width:${myIncome > 0 ? Math.min(100, Math.max(4, (amt / myIncome) * 100)) : 4}%"></div></div>
+                <div class="report-row-meta"><span>% del sueldo</span><strong>${pctOfIncome(amt, myIncome)}</strong></div>
+              </div>`;
+            })
+            .join("")}
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <div>
+            <h3>Tus gastos personales</h3>
+            <p>Privados · % de tu sueldo por categoría</p>
+          </div>
+        </div>
+        ${renderReportRows(personalCats, myIncome, "personal")}
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <div>
+            <h3>Casa que pagaste vos</h3>
+            <p>Lo que salió de tu bolsillo en gastos compartidos</p>
+          </div>
+        </div>
+        ${renderReportRows(sharedPaidCats, myIncome, "shared")}
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <div>
+            <h3>Lectura rápida</h3>
+            <p>Cómo leer este informe</p>
+          </div>
+        </div>
+        <p class="split-note">
+          Si ganás ${money.format(myIncome || 0)} y una categoría suma ${money.format(400)}, eso es
+          ${pctOfIncome(400, myIncome || 0)} de tu sueldo.
+          Los personales solo los ves vos. En casa se muestra lo que <em>pagaste</em>, no la parte del otro.
+        </p>
+      </section>
+    `;
+  }
+
   function render() {
     if (!state.profile) return;
     const c = calc(monthTxs());
@@ -791,6 +941,7 @@
     if (state.view === "casa") root.innerHTML = viewCasa(c);
     else if (state.view === "personal") root.innerHTML = viewPersonal(c);
     else if (state.view === "ingresos") root.innerHTML = viewIngresos(c);
+    else if (state.view === "informes") root.innerHTML = viewInformes(c);
     else root.innerHTML = viewResumen(c);
 
     bindTxClicks(root);
