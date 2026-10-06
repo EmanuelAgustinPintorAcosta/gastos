@@ -854,7 +854,10 @@
       b.type = "button";
       b.textContent = c;
       b.className = c === category ? "active" : "";
-      b.addEventListener("click", () => {
+      b.setAttribute("aria-pressed", c === category ? "true" : "false");
+      b.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         state.form.category = c;
         paintForm();
       });

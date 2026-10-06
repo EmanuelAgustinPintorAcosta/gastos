@@ -1035,11 +1035,15 @@ button {
   background: #efe8db;
   font-size: 13px;
   font-weight: 700;
+  border: 1px solid transparent;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 .chips button.active {
   background: var(--ink);
   color: #fff8ee;
+  border-color: var(--ink);
 }
 
 .field-row {
