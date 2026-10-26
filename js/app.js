@@ -19,13 +19,23 @@
     return;
   }
 
+  const AUTH_KEY = "hogar-auth-v1";
+  // Hasta chequear red, no leemos la sesión guardada: evita un loop de refresh
+  // cuando no hay DNS/internet (ERR_NAME_NOT_RESOLVED).
+  let sessionStorageOpen = false;
+  const gatedStorage = {
+    getItem: (key) => (sessionStorageOpen ? window.localStorage.getItem(key) : null),
+    setItem: (key, value) => window.localStorage.setItem(key, value),
+    removeItem: (key) => window.localStorage.removeItem(key),
+  };
+
   const sb = lib.createClient(CFG.supabaseUrl, CFG.supabaseAnonKey, {
     auth: {
       persistSession: true,
-      autoRefreshToken: true,
+      autoRefreshToken: false,
       detectSessionInUrl: true,
-      storage: window.localStorage,
-      storageKey: "hogar-auth-v1",
+      storage: gatedStorage,
+      storageKey: AUTH_KEY,
     },
   });
 
@@ -121,6 +131,9 @@
   function rememberWho(id) {
     state.loginWho = id;
     localStorage.setItem(WHO_KEY, id);
+    const email = CFG.users[id]?.email || "";
+    const loginUser = document.getElementById("login-username");
+    if (loginUser) loginUser.value = email;
   }
 
   function toMonth(d) {
@@ -250,57 +263,111 @@
     document.getElementById("session-kicker").textContent = `Sesión de ${person(state.profile.slug).short}`;
     document.getElementById("settings-user").textContent =
       `Estás como ${person(state.profile.slug).name}. La sesión queda guardada en este dispositivo hasta que cierres sesión. Casa e ingresos se sincronizan; lo personal es privado.`;
+    const settingsUser = document.getElementById("settings-username");
+    if (settingsUser) settingsUser.value = CFG.users[state.profile.slug]?.email || "";
     showApp(true);
     render();
   }
 
+  function isNetworkError(err) {
+    const msg = String(err?.message || err || "");
+    return /failed to fetch|network|timeout|abort|name_not_resolved|err_name|offline|load failed/i.test(
+      msg
+    );
+  }
+
+  const OFFLINE_MSG =
+    "Sin conexión con el servidor. Revisá WiFi o datos móviles y tocá Entrar.";
+
+  async function pingSupabase() {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 2500);
+    try {
+      await fetch(`${CFG.supabaseUrl}/auth/v1/health`, {
+        method: "GET",
+        signal: ctrl.signal,
+        headers: { apikey: CFG.supabaseAnonKey },
+        cache: "no-store",
+      });
+      return true;
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  function readStoredSession() {
+    try {
+      const raw = window.localStorage.getItem(AUTH_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      const access = parsed.access_token || parsed.currentSession?.access_token;
+      const refresh = parsed.refresh_token || parsed.currentSession?.refresh_token;
+      if (!access || !refresh) return null;
+      return { access_token: access, refresh_token: refresh };
+    } catch {
+      return null;
+    }
+  }
+
+  async function recoverSession() {
+    sessionStorageOpen = true;
+    try {
+      sb.auth.startAutoRefresh?.();
+    } catch {
+      /* ignore */
+    }
+
+    const stored = readStoredSession();
+    if (!stored) return false;
+
+    const { data, error } = await Promise.race([
+      sb.auth.setSession(stored),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000)),
+    ]);
+    if (error) throw error;
+    const session = data?.session;
+    if (!session) return false;
+    await enterApp(session);
+    return true;
+  }
+
   async function boot() {
     paintLoginWho();
+    showApp(false);
+    bindAuthEvents();
+    setupInstallPrompt();
+
+    const online = await pingSupabase();
+    if (!online) {
+      showLoginError(OFFLINE_MSG);
+      window.addEventListener(
+        "online",
+        () => {
+          showLoginError("Red detectada. Reintentando…");
+          recoverSession().catch(() => showLoginError(OFFLINE_MSG));
+        },
+        { once: true }
+      );
+      return;
+    }
 
     try {
       showBoot(true);
-      const sessionResult = await Promise.race([
-        sb.auth.getSession(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 6000)),
-      ]);
-
-      const session = sessionResult?.data?.session || null;
-
-      if (session) {
-        try {
-          await Promise.race([
-            enterApp(session),
-            new Promise((_, reject) => setTimeout(() => reject(new Error("profile-timeout")), 8000)),
-          ]);
-        } catch (err) {
-          console.error(err);
-          // No borramos la sesión por un timeout de red: el usuario reintenta
-          const isMissingProfile =
-            /PGRST116|0 rows|profile/i.test(String(err.message || err)) &&
-            err.message !== "profile-timeout";
-          if (isMissingProfile) {
-            await sb.auth.signOut().catch(() => {});
-          }
-          showApp(false);
-          showLoginError(
-            err.message === "profile-timeout"
-              ? "Hubo un problema de red al restaurar la sesión. Tocá Entrar de nuevo."
-              : "Falta el perfil en Supabase (seed-profiles.sql) o hubo un error de red."
-          );
-        }
-      } else {
-        showApp(false);
-      }
+      await recoverSession();
     } catch (err) {
-      console.error("boot", err);
       showApp(false);
-      if (err.message === "timeout") {
-        showLoginError("No se pudo verificar la sesión guardada. Probá Entrar.");
-      }
+      showLoginError(isNetworkError(err) ? OFFLINE_MSG : "No se pudo restaurar la sesión. Entrá de nuevo.");
     } finally {
       showBoot(false);
     }
+  }
 
+  function bindAuthEvents() {
+    if (bindAuthEvents._done) return;
+    bindAuthEvents._done = true;
     sb.auth.onAuthStateChange(async (event, session) => {
       if (event === "SIGNED_OUT") {
         state.session = null;
@@ -314,7 +381,6 @@
           showBoot(true);
           await enterApp(session);
         } catch (err) {
-          console.error(err);
           showApp(false);
           showLoginError("Falta el perfil en la tabla profiles.");
         } finally {
@@ -325,8 +391,6 @@
         state.session = session;
       }
     });
-
-    setupInstallPrompt();
   }
 
   function setupInstallPrompt() {
@@ -374,6 +438,8 @@
       });
       wrap.appendChild(b);
     });
+    const loginUser = document.getElementById("login-username");
+    if (loginUser) loginUser.value = CFG.users[state.loginWho]?.email || "";
   }
 
   // Por si el usuario toca Guada/Ema antes de que corra boot
@@ -403,22 +469,40 @@
     const btn = document.getElementById("login-submit");
     btn.disabled = true;
     btn.textContent = "Entrando…";
-    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    sessionStorageOpen = true;
+    let data;
+    let error;
+    try {
+      const result = await sb.auth.signInWithPassword({ email, password });
+      data = result.data;
+      error = result.error;
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = "Entrar";
+      showLoginError(isNetworkError(err) ? OFFLINE_MSG : err.message || "No se pudo entrar");
+      return;
+    }
     btn.disabled = false;
     btn.textContent = "Entrar";
     if (error) {
-      console.error("login", error);
       const detail = error.message || "";
-      if (/disabled|email_provider/i.test(detail) || error.code === "email_provider_disabled") {
+      if (isNetworkError(error)) {
+        showLoginError(OFFLINE_MSG);
+      } else if (/disabled|email_provider/i.test(detail) || error.code === "email_provider_disabled") {
         showLoginError("En Supabase: Authentication → Providers → Email → Enable Sign in. Guardá y reintentá.");
       } else if (/confirm|not confirmed/i.test(detail)) {
         showLoginError("Email no confirmado. En Users tocá Confirm, o desactivá Confirm email en Providers.");
       } else if (/invalid/i.test(detail)) {
-        showLoginError(`Credenciales inválidas para ${email}. El email debe coincidir exactamente con Authentication → Users.`);
+        showLoginError("Contraseña incorrecta. Probá de nuevo.");
       } else {
-        showLoginError(`${detail || "No se pudo entrar"} (${email})`);
+        showLoginError(detail || "No se pudo entrar");
       }
       return;
+    }
+    try {
+      sb.auth.startAutoRefresh?.();
+    } catch {
+      /* ignore */
     }
     try {
       await enterApp(data.session);

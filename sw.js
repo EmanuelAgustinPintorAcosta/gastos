@@ -1,5 +1,5 @@
 /* Hogar PWA — cache del shell para instalar y abrir offline-ish */
-const CACHE = "hogar-shell-v3";
+const CACHE = "hogar-shell-v4";
 const ASSETS = [
   "/",
   "/index.html",

@@ -41,6 +41,15 @@
         </div>
 
         <form id="login-form" autocomplete="on">
+          <input
+            class="sr-only"
+            type="text"
+            id="login-username"
+            name="username"
+            autocomplete="username"
+            tabindex="-1"
+            aria-hidden="true"
+          />
           <label class="field">
             <span>Contraseña</span>
             <input
@@ -193,6 +202,15 @@
         <p class="muted backup-copy" id="settings-user">—</p>
 
         <form id="password-form">
+          <input
+            class="sr-only"
+            type="text"
+            id="settings-username"
+            name="username"
+            autocomplete="username"
+            tabindex="-1"
+            aria-hidden="true"
+          />
           <label class="field">
             <span>Nueva contraseña</span>
             <input type="password" id="new-password" name="new-password" autocomplete="new-password" minlength="4" maxlength="64" placeholder="Mínimo 4 caracteres" required />
