@@ -277,7 +277,7 @@
   }
 
   const OFFLINE_MSG =
-    "Sin conexión con el servidor. Revisá WiFi o datos móviles y tocá Entrar.";
+    "No se alcanza el proyecto de Supabase. Si tenés internet, el proyecto está pausado o fue eliminado: entra a supabase.com/dashboard y restaurálo o creá uno nuevo.";
 
   async function pingSupabase() {
     if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
@@ -396,7 +396,6 @@
   function setupInstallPrompt() {
     const hint = document.getElementById("install-hint");
     window.addEventListener("beforeinstallprompt", (e) => {
-      e.preventDefault();
       state.deferredInstall = e;
       if (hint) {
         hint.hidden = false;
